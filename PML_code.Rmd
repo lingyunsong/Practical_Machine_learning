@@ -1,0 +1,112 @@
+Practical Machine Learning: Prediction Assignment Writeup
+=========================================================
+
+Project requirement:
+--------------------
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their BEHAVIOR, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and INCORRECTLY in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+The test data are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the DOCUMENT you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+What you should SUBMIT
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross VALIDATION, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+1. Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you SUBMIT a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+2. You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the PROGRAMMING assignment for automated grading. See the programming assignment for additional details. 
+
+Background of the data
+----------------------
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg).Read more: http://groupware.les.inf.puc-rio.br/har#ixzz3XFG6Fcoy
+
+Data Loading
+------------
+#set up directory:
+```{r}
+setwd("~/Desktop/Coursera/Practical_Machine_learning")
+```
+#download and read training data and test data:
+```{r}
+url1="http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url2="http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url1, destfile = "train.csv", method="auto")
+download.file(url2, destfile = "test.csv", method="auto")
+train_data <- read.csv("train.csv", sep=',', header=T)
+testing <- read.csv("test.csv", sep=',', header=T)
+```
+Data Preprocessing
+------------------
+#check missing values in train.csv file, by rows or by columns
+```{r}
+#how many rows (observations) have missing data: 
+nrow(train_data[!complete.cases(train_data),])
+#How many columns (variables) have missing data:
+col_with_miss <- which(apply(train_data, 2, function(x) sum(x %in% c(NA, '')))> 0)
+length(col_with_miss) 
+```
+#For data cleaning there are two options to treat missing values: Either delete missing values by rows or by columns. More than 97% of observations will be gone if I get rid of all rows containing missing data; and ca. 62% of variables will be gone if I remove variables containing missing data. So I chose to delete variables containing "NA" or nothing. After that, the non-numberic variables (from column 1 to column 6) are removed to meet the model fitting requirement. After data cleaning, new training dataset keeps the same observations with original training data but has 54 variables instead of 160.
+```{r}
+train_data <- train_data[,-col_with_miss]
+train_data <- train_data[,-c(1:6)]
+dim(train_data)
+```
+Machine Learning and cross-validation
+-------------------------------------
+#In the following steps, original training data are split into two subsets: training (80%) and validation (20%). The training subset is fitted with three commonly used methods:decision trees(rpart), random forest(rf), and boosted trees(gbm), respectively. 
+```{r}
+#split data to training part and validation part:
+library(caret)
+inTrain <- createDataPartition(y=train_data$classe, p=0.8, list=F)
+set.seed(1234)
+validation <- train_data[-inTrain,]
+training <- train_data[inTrain,]
+dim(training)
+dim(validation)
+#fit training subset with three machine learning algorithms:
+library(randomForest)
+library(rpart)
+library(gbm)
+library(plyr)
+set.seed(5678)
+rfmodFit <- train(classe~ ., data=training, method="rf", trControl = trainControl(method="cv"),number=3)
+rpmodFit <- train(classe~ ., data=training, method="rpart")
+boostFit <- train(classe~ ., method="gbm", data=training, verbose=F)
+
+#Predict validation classe by using 3 fitted models:
+pred_rf_v <- predict(rfmodFit, validation)
+pred_rp_v <- predict(rpmodFit, validation)
+pred_boostFit_v <- predict(boostFit, validation)
+```
+
+In-sample error and out-of-sample error analysis
+------------------------------------------------
+```{r}
+#out-of-sample errors
+confusionMatrix(pred_rf_v, validation$classe)
+confusionMatrix(pred_rp_v, validation$classe)
+confusionMatrix(pred_boostFit_v, validation$classe)
+#in-sample error:
+pred_rf_t <- predict(rfmodFit, training)
+pred_rp_t <- predict(rpmodFit, training)
+pred_boostFit_t <- predict(boostFit, training)
+confusionMatrix(pred_rf_t, training$classe)
+confusionMatrix(pred_rp_t, training$classe)
+confusionMatrix(pred_boostFit_t, training$classe)
+```
+#above results show that random forest is the most accurate method for obtaining smallest in-sample errors and out-of-sample errors.Boosting is a little less accurate than rf, but still gets accuracies at ca. 99%. The method of decision trees is much less inaccurate than the other two.
+Since the overall accuracy of random forest prediction at validation dataset is 0.9987, and in-sample accuracy is 1. This suggested out-of-sample error(0.13%) is slightly larger than in-sample error, and similar error value should be observed in predicting testing dataset.
+
+Predict observations in testing dataset by random Forest
+--------------------------------------------------------
+```{r}
+testing <- testing[,-col_with_miss]
+testing <- testing[,-c(1:6)]
+dim(testing)
+predict(rfmodFit, testing)
+```
+
+
